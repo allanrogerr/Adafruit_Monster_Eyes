@@ -18,6 +18,32 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// ---------------------------------------------------------------------------
+//  IS A USB MASS-STORAGE DRIVE POSSIBLE?
+// ---------------------------------------------------------------------------
+//
+// Exporting the CIRCUITPY drive needs TinyUSB *device* MSC, which needs a real
+// USB-OTG controller. The ESP32-C3, C6 and H2 have only the fixed-function
+// USB-Serial-JTAG peripheral: it does CDC and JTAG and nothing else, so
+// Adafruit_USBD_MSC is not even declared for those targets and referencing it
+// is a compile error rather than a runtime failure.
+//
+// Where the drive is unavailable the eye still runs -- assets come from the
+// built-in defaults plus whatever the sketch sets, and a FAT partition can
+// still be read if one was flashed by other means.
+#ifndef MONSTER_EYES_USB_MSC
+#if defined(ARDUINO_ARCH_ESP32)
+#include <soc/soc_caps.h>
+#if defined(SOC_USB_OTG_SUPPORTED) && SOC_USB_OTG_SUPPORTED
+#define MONSTER_EYES_USB_MSC 1 ///< Device MSC is available.
+#else
+#define MONSTER_EYES_USB_MSC 0 ///< No USB-OTG on this target; no drive.
+#endif
+#else
+#define MONSTER_EYES_USB_MSC 1 ///< RP2 and friends have device MSC.
+#endif
+#endif
+
 /** Largest number of eyes one instance can drive. */
 #ifndef MONSTER_EYES_MAX_EYES
 #define MONSTER_EYES_MAX_EYES 2

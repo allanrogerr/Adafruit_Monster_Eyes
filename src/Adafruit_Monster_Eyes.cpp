@@ -149,7 +149,9 @@ void Adafruit_Monster_Eyes::applyDefaults(void) {
   _configFile = "/config.eye";
   _storageEnabled = true;
   _storageKeep = false;
-  _driveModeEnabled = true;
+  // Off where the chip cannot export a drive at all, so begin() does not read a
+  // button, announce drive mode, and then have nothing to offer.
+  _driveModeEnabled = MONSTER_EYES_USB_MSC;
   _safeModePin = EYES_SAFE_MODE_PIN_DEFAULT;
   _sideRight = false;
   _sideSet = false;

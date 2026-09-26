@@ -353,6 +353,7 @@ public:
 //  2. STORAGE
 // ===========================================================================
 
+#if MONSTER_EYES_USB_MSC
 static Adafruit_USBD_MSC usb_msc;
 static volatile bool mscWritten = false;
 static volatile uint32_t lastWriteMillis = 0;
@@ -375,6 +376,7 @@ static void mscFlushCb(void) {
   fatfs.cacheClear();
   lastWriteMillis = millis();
 }
+#endif // MONSTER_EYES_USB_MSC
 
 bool Adafruit_Monster_Eyes::storageBegin(void) {
   if (!flash.begin()) {
@@ -405,6 +407,16 @@ bool Adafruit_Monster_Eyes::driveModeRequested(void) {
 }
 
 void Adafruit_Monster_Eyes::runDriveMode(void) {
+#if !MONSTER_EYES_USB_MSC
+  // No USB-OTG on this target, so there is no drive to export. Return instead
+  // of spinning forever: the caller can carry on with built-in defaults, which
+  // is strictly more useful than a board that looks hung.
+  EYES_ERR("Drive mode unavailable: this chip has no USB-OTG, only "
+           "USB-Serial-JTAG, so device mass storage does not exist.\n");
+  EYES_ERR("Write assets to the FAT partition another way, or drive the eye "
+           "from sketch calls.\n");
+  return;
+#else
   EYES_DBG("=== USB DRIVE MODE ===\n");
   EYES_DBG("The display is intentionally off. Copy files, then eject.\n");
 
@@ -449,6 +461,7 @@ void Adafruit_Monster_Eyes::runDriveMode(void) {
     }
     delay(5);
   }
+#endif // MONSTER_EYES_USB_MSC
 }
 
 // ===========================================================================
