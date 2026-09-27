@@ -615,6 +615,14 @@ bool Adafruit_Monster_Eyes::begin(void) {
   } else {
     EYES_DBG("  storage disabled; using built-in defaults\n");
   }
+  // A radius left <= 0 means "derive from displaySize", and displaySize is not
+  // known until the display is up. finalizeSettings() would derive it from zero
+  // and write the result back, after which the <= 0 test can never fire again
+  // and the bad value is permanent -- eyeRadius comes out 5 on a 240px panel.
+  // Keep the sentinels so the pass after the display is up can do it properly.
+  const int reqEyeRadius = _settings.eyeRadius;
+  const int reqIrisRadius = _settings.irisRadius;
+  const int reqSlitPupilRadius = _settings.slitPupilRadius;
   finalizeSettings();
 
   // Display next, before the tables. On a framebuffer backend this is the
@@ -638,7 +646,12 @@ bool Adafruit_Monster_Eyes::begin(void) {
     _settings.displaySize = maxSize;
   if (_settings.displaySize > maxSize)
     _settings.displaySize = maxSize;
-  finalizeSettings(); // Re-derive coverage for the final size
+  // Restore the sentinels before re-deriving. A value the config or sketch set
+  // explicitly is non-zero and survives this untouched.
+  _settings.eyeRadius = reqEyeRadius;
+  _settings.irisRadius = reqIrisRadius;
+  _settings.slitPupilRadius = reqSlitPupilRadius;
+  finalizeSettings(); // Derive the radii and coverage for the final size
 
   // pupilMin/pupilMax are the inverse of the irisMin/irisRange the renderer
   // wants: a larger iris fraction means a smaller pupil.
@@ -798,12 +811,19 @@ bool Adafruit_Monster_Eyes::loadEye(const char *path) {
       _variant[e] = prevVar[e];
   }
 
+  // Same sentinel dance as begin(): see the comment there.
+  const int reqEyeRadius = _settings.eyeRadius;
+  const int reqIrisRadius = _settings.irisRadius;
+  const int reqSlitPupilRadius = _settings.slitPupilRadius;
   finalizeSettings();
   const int maxSize = _display->maxEyeSize();
   if (_settings.displaySize <= 0)
     _settings.displaySize = maxSize;
   if (_settings.displaySize > maxSize)
     _settings.displaySize = maxSize;
+  _settings.eyeRadius = reqEyeRadius;
+  _settings.irisRadius = reqIrisRadius;
+  _settings.slitPupilRadius = reqSlitPupilRadius;
   finalizeSettings(true); // The one that reports, as in begin()
 
   _irisMin = 1.0f - _settings.pupilMax;
