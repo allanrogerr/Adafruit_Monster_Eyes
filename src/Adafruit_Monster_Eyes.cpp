@@ -1118,8 +1118,13 @@ void Adafruit_Monster_Eyes::setGaze(float x, float y) {
     x *= k;
     y *= k;
   }
+  // Map space is SCREEN space: y grows downward, as renderEye's
+  // yPositionOverMap = eyeY - half shows. The documented API is maths space,
+  // "-1.0 down to 1.0 up", so y must be NEGATED on the way in. x needs no such
+  // treatment because both conventions agree that larger means further right --
+  // which is exactly why this bug only ever showed on one axis.
   _frameEyeX = (float)_mapRadius + x * _gazeRadius;
-  _frameEyeY = (float)_mapRadius + y * _gazeRadius;
+  _frameEyeY = (float)_mapRadius - y * _gazeRadius;
   _gazeExternal = true;
 }
 
@@ -1138,7 +1143,8 @@ float Adafruit_Monster_Eyes::gazeX(void) const {
 float Adafruit_Monster_Eyes::gazeY(void) const {
   if (_gazeRadius <= 0.0f)
     return 0.0f;
-  return (_frameEyeY - (float)_mapRadius) / _gazeRadius;
+  // Negated to match setGaze, so setGaze(x, y) then gazeY() round-trips.
+  return ((float)_mapRadius - _frameEyeY) / _gazeRadius;
 }
 
 void Adafruit_Monster_Eyes::blink(void) {
