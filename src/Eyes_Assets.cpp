@@ -698,12 +698,16 @@ static void loadOneEyelid(const char *path, uint8_t *openT, uint8_t *closedT,
 //
 // Only textures that came from a FILE are freed: when no file loaded, the
 // pointer is the address of a member, not something malloc gave us.
-void Adafruit_Monster_Eyes::freeMedia(void) {
-  if (_lidBlock) {
-    free(_lidBlock);
-    _lidBlock = NULL;
+void Adafruit_Monster_Eyes::freeMedia(bool keepLids) {
+  if (!keepLids) {
+    if (_lidBlock) {
+      free(_lidBlock);
+      _lidBlock = NULL;
+    }
+    _upperOpen = _upperClosed = _lowerOpen = _lowerClosed = NULL;
+    _lidUpperLoaded[0] = _lidLowerLoaded[0] = 0;
+    _lidSize = 0;
   }
-  _upperOpen = _upperClosed = _lowerOpen = _lowerClosed = NULL;
 
   if (_irisFromFile && _irisData)
     free((void *)_irisData);
@@ -721,21 +725,43 @@ void Adafruit_Monster_Eyes::freeMedia(void) {
 }
 
 bool Adafruit_Monster_Eyes::mediaLoad(int size, uint32_t texBudget) {
+  // THE EYELIDS ARE THE EXPENSIVE PART OF A SWAP, not the iris: each lid
+  // bitmap is scanned column by column to find its topmost and bottommost set
+  // pixel, and on an ESP32-C3 that is about 60 ms of a 90 ms load -- against
+  // 16 ms for a 256x32 iris. The tables depend on nothing but the two paths
+  // and the eye size, so a swap between two configs that SHARE their eyelids
+  // has nothing to rebuild and drops to about 30 ms.
+  const bool keepLids =
+      _lidBlock && (size == _lidSize) &&
+      !strcmp(_lidUpperLoaded, _settings.upperFile) &&
+      !strcmp(_lidLowerLoaded, _settings.lowerFile);
+
   // Release the previous set first. Without this a second call leaks the old
   // textures, which on a 240px eye is over 100 KB a time.
-  freeMedia();
+  freeMedia(keepLids);
 
-  _lidBlock = (uint8_t *)eyesMalloc((size_t)size * 4); // All four tables
-  if (!_lidBlock)
-    return false;
-  _upperOpen = &_lidBlock[0];
-  _upperClosed = &_lidBlock[size];
-  _lowerOpen = &_lidBlock[size * 2];
-  _lowerClosed = &_lidBlock[size * 3];
+  if (!keepLids) {
+    _lidBlock = (uint8_t *)eyesMalloc((size_t)size * 4); // All four tables
+    if (!_lidBlock)
+      return false;
+    _upperOpen = &_lidBlock[0];
+    _upperClosed = &_lidBlock[size];
+    _lowerOpen = &_lidBlock[size * 2];
+    _lowerClosed = &_lidBlock[size * 3];
+  }
 
   EYES_DBG("Media:\n");
-  loadOneEyelid(_settings.upperFile, _upperOpen, _upperClosed, size, true);
-  loadOneEyelid(_settings.lowerFile, _lowerOpen, _lowerClosed, size, false);
+  if (keepLids) {
+    EYES_DBG("  eyelids: unchanged, tables kept\n");
+  } else {
+    loadOneEyelid(_settings.upperFile, _upperOpen, _upperClosed, size, true);
+    loadOneEyelid(_settings.lowerFile, _lowerOpen, _lowerClosed, size, false);
+    strncpy(_lidUpperLoaded, _settings.upperFile, EYES_PATH_MAX - 1);
+    _lidUpperLoaded[EYES_PATH_MAX - 1] = 0;
+    strncpy(_lidLowerLoaded, _settings.lowerFile, EYES_PATH_MAX - 1);
+    _lidLowerLoaded[EYES_PATH_MAX - 1] = 0;
+    _lidSize = size;
+  }
 
   uint32_t scleraBudget = texBudget / 8;
   if (scleraBudget > 4096)

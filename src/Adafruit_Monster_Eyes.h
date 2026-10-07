@@ -712,7 +712,12 @@ private:
   bool storageBegin(void);
   void storageEnd(void);
   bool mediaLoad(int size, uint32_t texBudget);
-  void freeMedia(void);
+  /**
+   * @brief Release what mediaLoad() allocated.
+   * @param keepLids true to retain the eyelid tables, when the next load uses
+   *                 the same two bitmaps at the same size.
+   */
+  void freeMedia(bool keepLids = false);
   void applyConfigRoot(const void *variantPtr);
   void applyConfigVariant(const void *variantPtr, EyesVariant &v);
   /** @brief Convert a colour to the byte order the backend wants.
@@ -748,6 +753,14 @@ private:
 
   // Media
   uint8_t *_lidBlock;          ///< One allocation holding all four lid tables
+  /// Which eyelid bitmaps the current _lidBlock was built from, and at what
+  /// size. Scanning a lid bitmap column by column is the single most expensive
+  /// part of a run-time eye swap -- about 60 ms of a 90 ms load on an
+  /// ESP32-C3 -- and the result depends on nothing but these. Two eye configs
+  /// that share their eyelids can therefore skip it entirely.
+  char _lidUpperLoaded[EYES_PATH_MAX];
+  char _lidLowerLoaded[EYES_PATH_MAX];
+  int _lidSize;                ///< Eye size the lid tables were built for
   uint8_t *_upperOpen;         ///< Upper lid per column, fully open
   uint8_t *_upperClosed;       ///< Upper lid per column, fully shut
   uint8_t *_lowerOpen;         ///< Lower lid per column, fully open

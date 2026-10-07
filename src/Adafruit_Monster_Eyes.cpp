@@ -118,6 +118,11 @@ void Adafruit_Monster_Eyes::applyDefaults(void) {
   _mapRadius = _mapDiameter = 0;
 
   _lidBlock = NULL;
+  // Must be cleared, or mediaLoad()'s eyelid cache compares against stack
+  // garbage on the very first load and can wrongly decide the tables are
+  // already built -- leaving the renderer pointed at nothing.
+  _lidUpperLoaded[0] = _lidLowerLoaded[0] = 0;
+  _lidSize = 0;
   _upperOpen = _upperClosed = _lowerOpen = _lowerClosed = NULL;
   _irisData = _scleraData = NULL;
   _irisW = _irisH = _scleraW = _scleraH = 1;
@@ -781,7 +786,13 @@ bool Adafruit_Monster_Eyes::loadEye(const char *path) {
   }
 
   EYES_DBG("\n--- switching to %s ---\n", path);
-  freeMedia();
+  // Release the textures early, so the budget mediaLoad() computes below sees
+  // the memory they were holding. KEEP THE EYELIDS though: they are 4 bytes a
+  // column -- under 1 KB -- so they free no budget worth having, and dropping
+  // them here would defeat mediaLoad()'s cache, which is what lets a swap
+  // between two configs sharing their eyelids skip the single most expensive
+  // step. mediaLoad() frees them itself the moment the paths differ.
+  freeMedia(true);
 
   const EyesSettings prev = _settings;
   EyesVariant prevVar[MONSTER_EYES_MAX_EYES];
@@ -875,7 +886,21 @@ bool Adafruit_Monster_Eyes::loadEye(const char *path) {
     _eye[e].scleraStartAngle = _variant[e].scleraStartAngle;
   }
 
-  _display->clear(_settings.eyelidColor);
+  // CLEAR ONLY IF THE GEOMETRY MOVED. This used to be unconditional, and on a
+  // run-time swap between two eyes of the SAME size it is the most visible
+  // thing that happens: the panel goes to the eyelid colour -- black, for the
+  // usual eyelidIndex 0x00 -- and stays there for the whole of mediaLoad()
+  // below, which is ~120 ms when a texture is read off FAT and decimated. The
+  // viewer sees old eye, black gap, new eye, and reads the gap as lag rather
+  // than as a transition.
+  //
+  // Nothing requires it when the size is unchanged: the renderer redraws the
+  // full eye area every frame, so the previous eye simply stays on screen until
+  // the first frame of the new one overwrites it. The clear is only needed when
+  // the eye has SHRUNK and would otherwise leave a ring of stale pixels around
+  // the new, smaller one.
+  if (geometryMoved)
+    _display->clear(_settings.eyelidColor);
 
   const uint32_t freeHeap = eyesLargestFreeBlock();
   const uint32_t texBudget = (freeHeap > MONSTER_EYES_HEAP_RESERVE)
